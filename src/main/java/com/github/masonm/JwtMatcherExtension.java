@@ -3,6 +3,7 @@ package com.github.masonm;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.tomakehurst.wiremock.common.Json;
 import com.github.tomakehurst.wiremock.extension.Parameters;
 import com.github.tomakehurst.wiremock.http.Request;
 import com.github.tomakehurst.wiremock.matching.MatchResult;
@@ -21,9 +22,11 @@ public class JwtMatcherExtension extends RequestMatcherExtension {
     public static final String PARAM_NAME_HEADER = "header";
     public static final String PARAM_NAME_REQUEST = "request";
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     @Override
     public String getName() {
-        return "jwt-matcher";
+        return NAME;
     }
 
     @Override
@@ -40,24 +43,42 @@ public class JwtMatcherExtension extends RequestMatcherExtension {
             }
         }
 
+        Jwt token = null;
+
+        // 1. Try Authorization header (Bearer)
         String authString = request.getHeader("Authorization");
-        if (authString == null || authString.isEmpty()) {
+        if (authString != null && !authString.isEmpty()) {
+            token = Jwt.fromAuthHeader(authString);
+        }
+
+        // 2. Try body: assertion field (standard OAuth2 JWT Bearer)
+        if (token == null) {
+            String body = request.getBodyAsString();
+            if (body != null && !body.isEmpty()) {
+                try {
+                    JsonNode json = MAPPER.readTree(body);
+                    if (json.has("assertion")) {
+                        String jwt = json.get("assertion").asText();
+                        token = new Jwt(jwt);
+                    }
+                } catch (Exception e) {
+                    // Optionally log: e.g., log.debug("Failed to parse body as JSON", e);
+                }
+            }
+        }
+
+        // Null check to avoid NPE
+        if (token == null) {
             return noMatch();
         }
 
-        Jwt token = Jwt.fromAuthHeader(authString);
-
-        if (
-            parameters.containsKey(PARAM_NAME_HEADER) &&
-            !matchParams(token.getHeader(), parameters.get(PARAM_NAME_HEADER))
-        ) {
+        if (parameters.containsKey(PARAM_NAME_HEADER) &&
+                !matchParams(token.getHeader(), parameters.get(PARAM_NAME_HEADER))) {
             return noMatch();
         }
 
-        if (
-            parameters.containsKey(PARAM_NAME_PAYLOAD) &&
-            !matchParams(token.getPayload(), parameters.get(PARAM_NAME_PAYLOAD))
-        ) {
+        if (parameters.containsKey(PARAM_NAME_PAYLOAD) &&
+                !matchParams(token.getPayload(), parameters.get(PARAM_NAME_PAYLOAD))) {
             return noMatch();
         }
 
@@ -65,11 +86,11 @@ public class JwtMatcherExtension extends RequestMatcherExtension {
     }
 
     private boolean matchParams(JsonNode tokenValues, Object parameters) {
-        Map<String, JsonNode> parameterMap = new ObjectMapper().convertValue(
-            parameters,
-            new TypeReference<Map<String, JsonNode>>() {}
-        );
-        for (Map.Entry<String, JsonNode> entry: parameterMap.entrySet()) {
+        Map<String, JsonNode> parameterMap = MAPPER.convertValue(
+                parameters,
+                new TypeReference<Map<String, JsonNode>>() {
+                });
+        for (Map.Entry<String, JsonNode> entry : parameterMap.entrySet()) {
             JsonNode tokenValue = tokenValues.path(entry.getKey());
             if (!Objects.equals(tokenValue, entry.getValue())) {
                 return false;

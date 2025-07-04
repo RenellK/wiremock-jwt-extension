@@ -44,7 +44,9 @@ jar {
 
 shadowJar {
     archiveClassifier = '' // overwrite jar
-    relocate "com.fasterxml.jackson", 'com.github.masonm.com.fasterxml.jackson'
+    // removed - relocation is breaking the std jar
+    // relocate "com.fasterxml.jackson", 'com.github.masonm.com.fasterxml.jackson'
+
 }
 
 task standaloneJar(type: Jar) {

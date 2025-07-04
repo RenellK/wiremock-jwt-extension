@@ -117,6 +117,31 @@ public class JwtMatcherExtensionTest {
         assertFalse(isExactMatch(request, noMatchPayloadParams));
     }
 
+
+
+    @Test
+    public void withJwtInRequestBodyAssertion() {
+        final String jwtToken = TEST_AUTH_HEADER.toString().replace("Bearer ", "");
+        final String requestBody = "{ \"assertion\": \"" + jwtToken + "\" }";
+        final MockRequest request = mockRequest().body(requestBody);
+
+        assertTrue(isExactMatch(request, PAYLOAD_PARAMETER));
+        assertTrue(isExactMatch(request, HEADER_PARAMETER));
+        assertTrue(isExactMatch(request, BOTH_PARAMETERS));
+    }
+
+    @Test
+    public void withInvalidJsonInRequestBody() {
+        final MockRequest request = mockRequest().body("invalid json");
+        assertFalse(isExactMatch(request, PAYLOAD_PARAMETER));
+    }
+
+    @Test
+    public void withRequestBodyWithoutAssertion() {
+        final MockRequest request = mockRequest().body("{ \"other_field\": \"value\" }");
+        assertFalse(isExactMatch(request, PAYLOAD_PARAMETER));
+    }
+
     private boolean isExactMatch(MockRequest request, Parameters parameters) {
         return new JwtMatcherExtension().match(request.asLoggedRequest(), parameters).isExactMatch();
     }
